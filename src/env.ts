@@ -12,6 +12,30 @@ const schema = z.object({
   WEBHOOK_SECRET: z.string().trim().min(1),
   WEBHOOK_PORT: z.coerce.number().int().positive(),
   ADMIN_ROLE_ID: z.string().trim().min(1).optional(),
+  JELLYFIN_URL: z.url().optional(),
+  JELLYFIN_API_KEY: z.string().trim().min(1).optional(),
+  JELLYFIN_PUBLIC_URL: z.url().optional(),
+  PLEX_PUBLIC_URL: z.url().optional(),
+  SEERR_PUBLIC_URL: z.url().optional(),
+  STATUS_PAGE_URL: z.url().optional(),
+  LINKS_EXTRA: z.string().trim().min(1).optional(),
+  UPTIME_KUMA_URL: z.url().optional(),
+  UPTIME_KUMA_STATUS_SLUG: z.string().trim().min(1).optional(),
+  STATUS_CHANNEL_ID: z.string().trim().min(1).optional(),
+  ANNOUNCE_CHANNEL_ID: z.string().trim().min(1).optional(),
+  SONARR_URL: z.url().optional(),
+  SONARR_API_KEY: z.string().trim().min(1).optional(),
+  TAUTULLI_URL: z.url().optional(),
+  TAUTULLI_API_KEY: z.string().trim().min(1).optional(),
+  BESZEL_URL: z.url().optional(),
+  BESZEL_EMAIL: z.string().trim().min(1).optional(),
+  BESZEL_PASSWORD: z.string().trim().min(1).optional(),
+  ARCANE_URL: z.url().optional(),
+  ARCANE_API_KEY: z.string().trim().min(1).optional(),
+  ARCANE_ENV_ID: z.string().trim().min(1).optional(),
+  RESTART_ALLOWLIST: z.string().trim().min(1).optional(),
+  NEW_THIS_WEEK_CRON: z.string().trim().min(1).optional(),
+  INACTIVE_DAYS: z.coerce.number().int().positive().default(60),
 });
 
 export type Env = z.infer<typeof schema>;
@@ -35,13 +59,42 @@ function loadDotEnv(file = '.env'): void {
   }
 }
 
+const OPTIONAL = [
+  'ADMIN_ROLE_ID',
+  'JELLYFIN_URL',
+  'JELLYFIN_API_KEY',
+  'JELLYFIN_PUBLIC_URL',
+  'PLEX_PUBLIC_URL',
+  'SEERR_PUBLIC_URL',
+  'STATUS_PAGE_URL',
+  'LINKS_EXTRA',
+  'UPTIME_KUMA_URL',
+  'UPTIME_KUMA_STATUS_SLUG',
+  'STATUS_CHANNEL_ID',
+  'ANNOUNCE_CHANNEL_ID',
+  'SONARR_URL',
+  'SONARR_API_KEY',
+  'TAUTULLI_URL',
+  'TAUTULLI_API_KEY',
+  'BESZEL_URL',
+  'BESZEL_EMAIL',
+  'BESZEL_PASSWORD',
+  'ARCANE_URL',
+  'ARCANE_API_KEY',
+  'ARCANE_ENV_ID',
+  'RESTART_ALLOWLIST',
+  'NEW_THIS_WEEK_CRON',
+  'INACTIVE_DAYS',
+] as const;
+
 export function loadEnv(): Env {
   loadDotEnv();
-  const adminRole = process.env.ADMIN_ROLE_ID?.trim();
-  const parsed = schema.safeParse({
-    ...process.env,
-    ADMIN_ROLE_ID: adminRole ? adminRole : undefined,
-  });
+  const input: Record<string, string | undefined> = { ...process.env };
+  for (const key of OPTIONAL) {
+    const value = input[key]?.trim();
+    input[key] = value ? value : undefined;
+  }
+  const parsed = schema.safeParse(input);
   if (!parsed.success) {
     const names = parsed.error.issues.map((issue) => issue.path.join('.') || 'env').join(', ');
     throw new Error(`Invalid environment: ${names}`);

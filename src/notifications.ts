@@ -1,9 +1,5 @@
-import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  EmbedBuilder,
-} from 'discord.js';
+import { EmbedBuilder } from 'discord.js';
+import { requestButtons } from './present';
 import type { AppContext } from './context';
 import { posterUrl, type MediaKind, type SeerrClient } from './seerr';
 
@@ -133,20 +129,7 @@ async function postPending(event: SeerrNotification, ctx: AppContext): Promise<v
     embed.setFooter({ text: 'The webhook had no request id, so Approve and Decline are unavailable.' });
   }
 
-  const components = event.requestId
-    ? [
-        new ActionRowBuilder<ButtonBuilder>().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`seerr:approve:${event.requestId}`)
-            .setLabel('Approve')
-            .setStyle(ButtonStyle.Success),
-          new ButtonBuilder()
-            .setCustomId(`seerr:decline:${event.requestId}`)
-            .setLabel('Decline')
-            .setStyle(ButtonStyle.Danger),
-        ),
-      ]
-    : [];
+  const components = event.requestId ? [requestButtons(event.requestId)] : [];
 
   await channel.send({
     embeds: [embed],

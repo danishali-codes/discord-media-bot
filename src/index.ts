@@ -2,6 +2,7 @@ import { Client, GatewayIntentBits } from 'discord.js';
 import { openDatabase } from './db';
 import { loadEnv } from './env';
 import { registerHandlers } from './interactions';
+import { startJobs } from './jobs';
 import { SeerrClient } from './seerr';
 import { startWebhook } from './webhook';
 
@@ -24,6 +25,7 @@ async function main(): Promise<void> {
 
   await client.login(env.DISCORD_TOKEN);
   const server = startWebhook(ctx);
+  startJobs(ctx);
 
   const stop = (): void => {
     server.close();
