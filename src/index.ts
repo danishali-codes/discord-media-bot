@@ -1,4 +1,6 @@
 import { Client, GatewayIntentBits } from 'discord.js';
+import { registerBotChat } from './bot-chat';
+import { parseBotChannels } from './bots';
 import { openDatabase } from './db';
 import { loadEnv } from './env';
 import { registerHandlers } from './interactions';
@@ -10,12 +12,15 @@ async function main(): Promise<void> {
   const env = loadEnv();
   const db = openDatabase('data/bot.sqlite');
   const seerr = new SeerrClient({ baseUrl: env.SEERR_URL, apiKey: env.SEERR_API_KEY });
-  const client = new Client({
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
-  });
+  const intents = [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers];
+  if (parseBotChannels(env.BOT_CHANNELS).length > 0) {
+    intents.push(GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent);
+  }
+  const client = new Client({ intents });
   const ctx = { env, db, seerr, client };
 
   registerHandlers(client, ctx);
+  registerBotChat(client, ctx);
   client.once('clientReady', () => {
     console.log(`Logged in as ${client.user?.tag}`);
   });

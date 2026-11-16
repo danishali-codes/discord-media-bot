@@ -61,6 +61,12 @@ export class LinkStore {
       CREATE TABLE IF NOT EXISTS job_stamps (
         name TEXT PRIMARY KEY,
         value TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS bot_threads (
+        bot TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        thread TEXT NOT NULL,
+        PRIMARY KEY (bot, channel_id)
       )
     `);
   }
@@ -182,6 +188,30 @@ export class LinkStore {
          ON CONFLICT(name) DO UPDATE SET value = excluded.value`,
       )
       .run(name, value);
+  }
+
+  getBotThread(bot: string, channelId: string): string | undefined {
+    const row = this.db
+      .prepare('SELECT thread FROM bot_threads WHERE bot = ? AND channel_id = ?')
+      .get(bot, channelId) as { thread: string } | undefined;
+    return row?.thread;
+  }
+
+  setBotThread(bot: string, channelId: string, thread: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO bot_threads (bot, channel_id, thread) VALUES (?, ?, ?)
+         ON CONFLICT(bot, channel_id) DO UPDATE SET thread = excluded.thread`,
+      )
+      .run(bot, channelId, thread);
+  }
+
+  clearBotThreads(bot: string, channelId?: string): void {
+    if (channelId) {
+      this.db.prepare('DELETE FROM bot_threads WHERE bot = ? AND channel_id = ?').run(bot, channelId);
+      return;
+    }
+    this.db.prepare('DELETE FROM bot_threads WHERE bot = ?').run(bot);
   }
 
   unlink(discordId: string): boolean {

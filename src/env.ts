@@ -36,6 +36,9 @@ const schema = z.object({
   RESTART_ALLOWLIST: z.string().trim().min(1).optional(),
   NEW_THIS_WEEK_CRON: z.string().trim().min(1).optional(),
   INACTIVE_DAYS: z.coerce.number().int().positive().default(60),
+  N8N_BOTS_WEBHOOK_URL: z.url().optional(),
+  N8N_BOTS_SECRET: z.string().trim().min(1).optional(),
+  BOT_CHANNELS: z.string().trim().min(1).optional(),
 });
 
 export type Env = z.infer<typeof schema>;
@@ -85,6 +88,9 @@ const OPTIONAL = [
   'RESTART_ALLOWLIST',
   'NEW_THIS_WEEK_CRON',
   'INACTIVE_DAYS',
+  'N8N_BOTS_WEBHOOK_URL',
+  'N8N_BOTS_SECRET',
+  'BOT_CHANNELS',
 ] as const;
 
 export function loadEnv(): Env {
