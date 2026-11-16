@@ -27,7 +27,7 @@ export function registerHandlers(client: AppContext['client'], ctx: AppContext):
         [
           'Welcome. To request movies and shows, link the Jellyfin or Plex account you use with Seerr.',
           '',
-          'Run `/link-account` and pass your username. Choose jellyfin or plex.',
+          'In the server, run `/link-account` with your username and choose jellyfin or plex.',
           'A Seerr display name works too when it differs from the login.',
           'If nothing matches, check the spelling or ask an admin.',
         ].join('\n'),

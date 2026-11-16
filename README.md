@@ -12,9 +12,9 @@ v1 stops there. Later commands are listed at the bottom and are not implemented.
 | `/unlink-account` | Any member | Removes that link. |
 | `/request title` | Linked member | Search Seerr and request a movie, or a whole series / its latest season. Only works in `REQUESTS_CHANNEL_ID`. |
 
-`/link-account` and `/unlink-account` can be used in the server or in a DM with the bot. `/request` has to be used in the requests channel.
+All three commands run in the server. `/request` has to be used in the requests channel. Discord does not offer guild commands inside a DM, so registration stays guild-scoped.
 
-When someone joins the server, the bot DMs them and asks them to run `/link-account`. That DM is skipped if they have DMs closed. Approve, decline, and available notices are also DMs, and those fail quietly when DMs are closed.
+When someone joins, the bot DMs them the name of `/link-account`. They run that command in the server. The DM is skipped if they have DMs closed. Approve, decline, and available notices are also DMs, and those fail quietly when DMs are closed.
 
 ## Discord app
 
@@ -25,7 +25,7 @@ When someone joins the server, the bot DMs them and asks them to run `/link-acco
 5. Copy the application id into `DISCORD_CLIENT_ID`. Enable Discord developer mode, then copy the server id (`DISCORD_GUILD_ID`), the admin channel id (`ADMIN_CHANNEL_ID`), and the requests channel id (`REQUESTS_CHANNEL_ID`).
 6. Optional: copy a role id into `ADMIN_ROLE_ID`. Approve and Decline otherwise require the Discord Administrator permission.
 
-Register the slash commands after the bot is in the server (see Deploy). Registration is guild-scoped, so the commands show up immediately in that server only.
+Register the slash commands after the bot is in the server (see Deploy). Registration is guild-scoped, so the commands show up immediately in that server only. They are typed in a server channel, including after the join DM.
 
 ## Environment
 
@@ -120,7 +120,7 @@ Search calls `GET /api/v1/search?query=...` with the query percent-encoded (`%20
 
 Choosing a movie sends `POST /api/v1/request` with `mediaType`, `mediaId` (TMDB id), and `userId` of the linked Seerr user. Choosing a show asks for all seasons or the latest season. All seasons sends `seasons: "all"` (Seerr skips specials). Latest season sends the highest season number above 0. If Seerr says the title is already requested, already available, or has no seasons left, the bot shows that instead of an error. Quota and permission errors are shown as Seerr wrote them.
 
-Account linking loads `GET /api/v1/user?take=100` (and further pages when needed). A Jellyfin link matches `jellyfinUsername`, then `displayName`. A Plex link matches `plexUsername`, then `displayName`. Matching ignores case and surrounding spaces. The other service's username is not a match. Two matches at the same step are reported as ambiguous instead of guessing.
+Account linking loads `GET /api/v1/user?take=100` (and further pages when needed). A Jellyfin link matches `jellyfinUsername`, then `displayName`. A Plex link matches `plexUsername`, then `displayName`. Matching ignores case and surrounding spaces. The other service's username is not a match. Two matches at the same step are reported as ambiguous instead of guessing. v1 saves the link as soon as the name matches. A member who knows someone else's Jellyfin or Plex username can claim that Seerr user until it is linked. There is no Seerr login step in this version.
 
 ## Roadmap
 
