@@ -91,7 +91,9 @@ export async function askBot(interaction: ChatInputCommandInteraction, ctx: AppC
         const parts = splitDiscordMessage(text);
         if (parts.length === 0) return;
         await interaction.editReply(parts[0]);
-        for (const part of parts.slice(1)) await interaction.followUp(part);
+        for (const part of parts.slice(1)) {
+          await interaction.followUp(inHome ? part : { content: part, flags: MessageFlags.Ephemeral });
+        }
       },
     });
   if (inHome) await enqueue(`${bot.name}:${bot.channelId}`, run);
