@@ -12,6 +12,7 @@ import {
   type StringSelectMenuInteraction,
 } from 'discord.js';
 import type { AppContext } from './context';
+import type { LinkRecord, PendingLink } from './db';
 import { matchSeerrUser, type LinkService } from './match';
 import { posterUrl, SeerrRequestError, type MediaKind, type SearchHit } from './seerr';
 
@@ -27,7 +28,7 @@ export function registerHandlers(client: AppContext['client'], ctx: AppContext):
         [
           'Welcome. To request movies and shows, link the Jellyfin or Plex account you use with Seerr.',
           '',
-          'In the server, run `/link-account` with your username and choose jellyfin or plex.',
+          'In the server, run `/link-account` with your username and choose jellyfin or plex. An admin confirms it.',
           'A Seerr display name works too when it differs from the login.',
           'If nothing matches, check the spelling or ask an admin.',
         ].join('\n'),
@@ -67,15 +68,19 @@ async function handleInteraction(interaction: Interaction, ctx: AppContext): Pro
   if (interaction.isButton() && interaction.customId.startsWith('seerr:')) {
     return moderate(interaction, ctx);
   }
+  if (interaction.isButton() && interaction.customId.startsWith('link:')) {
+    return decideLink(interaction, ctx);
+  }
 }
 
 async function linkAccount(interaction: ChatInputCommandInteraction, ctx: AppContext): Promise<void> {
   const username = interaction.options.getString('username', true).trim();
-  const service = interaction.options.getString('service', true);
-  if (service !== 'jellyfin' && service !== 'plex') {
+  const serviceName = interaction.options.getString('service', true);
+  if (serviceName !== 'jellyfin' && serviceName !== 'plex') {
     await interaction.reply({ content: 'Pick Jellyfin or Plex.', flags: MessageFlags.Ephemeral });
     return;
   }
+  const service: LinkService = serviceName;
   if (!username) {
     await interaction.reply({
       content: 'Enter the username you use in Jellyfin or Plex.',
@@ -100,20 +105,35 @@ async function linkAccount(interaction: ChatInputCommandInteraction, ctx: AppCon
       );
       return;
     }
-    const saved = ctx.db.link({
+    const pending = {
       discordId: interaction.user.id,
       seerrUserId: match.user.id,
       username,
       service,
-    });
-    if (saved === 'seerr-taken') {
-      await interaction.editReply(
-        'That Seerr account is already linked to another Discord user. Ask an admin if that link is wrong.',
-      );
+      displayName: match.user.displayName ?? null,
+      jellyfinUsername: match.user.jellyfinUsername ?? null,
+      plexUsername: match.user.plexUsername ?? null,
+    };
+    const requested = ctx.db.requestLink(pending);
+    if (requested === 'discord-pending') {
+      await interaction.editReply('You already have a link request waiting for an admin.');
       return;
     }
-    const name = match.user.displayName ?? username;
-    await interaction.editReply(`Linked to ${name}. You can request movies and shows with /request.`);
+    if (requested === 'seerr-linked') {
+      await interaction.editReply('That Seerr account is already linked.');
+      return;
+    }
+    if (requested === 'seerr-pending') {
+      await interaction.editReply('That Seerr account is already waiting on another link request.');
+      return;
+    }
+    const posted = await postLinkRequest(interaction, ctx, pending);
+    if (!posted) {
+      ctx.db.denyPending(interaction.user.id);
+      await interaction.editReply('Could not reach the admin channel. Try again later.');
+      return;
+    }
+    await interaction.editReply('Link request sent to the admins for approval.');
   } catch (error) {
     await interaction.editReply(failureText(error, 'Could not look up Seerr users.'));
   }
@@ -135,11 +155,9 @@ async function requestTitle(interaction: ChatInputCommandInteraction, ctx: AppCo
     });
     return;
   }
-  if (!ctx.db.getByDiscord(interaction.user.id)) {
-    await interaction.reply({
-      flags: MessageFlags.Ephemeral,
-      content: 'Link your Jellyfin or Plex account first with /link-account.',
-    });
+  const gate = accountGate(ctx, interaction.user.id);
+  if (!gate.ok) {
+    await interaction.reply({ flags: MessageFlags.Ephemeral, content: gate.message });
     return;
   }
   const title = interaction.options.getString('title', true).trim();
@@ -184,11 +202,12 @@ async function pickResult(interaction: StringSelectMenuInteraction, ctx: AppCont
   }
   const mediaType = parsed[1] as MediaKind;
   const mediaId = Number(parsed[2]);
-  const link = ctx.db.getByDiscord(interaction.user.id);
-  if (!link) {
-    await interaction.update({ content: 'Link your account with /link-account first.', embeds: [], components: [] });
+  const gate = accountGate(ctx, interaction.user.id);
+  if (!gate.ok) {
+    await interaction.update({ content: gate.message, embeds: [], components: [] });
     return;
   }
+  const link = gate.link;
 
   await interaction.deferUpdate();
   try {
@@ -293,11 +312,12 @@ async function pickSeason(interaction: ButtonInteraction, ctx: AppContext): Prom
   const mode = parsed[1] as 'all' | 'latest';
   const mediaId = Number(parsed[2]);
   const chosenSeason = parsed[3] ? Number(parsed[3]) : undefined;
-  const link = ctx.db.getByDiscord(interaction.user.id);
-  if (!link) {
-    await interaction.update({ content: 'Link your account with /link-account first.', embeds: [], components: [] });
+  const gate = accountGate(ctx, interaction.user.id);
+  if (!gate.ok) {
+    await interaction.update({ content: gate.message, embeds: [], components: [] });
     return;
   }
+  const link = gate.link;
 
   await interaction.deferUpdate();
   try {
@@ -381,8 +401,126 @@ async function moderate(interaction: ButtonInteraction, ctx: AppContext): Promis
   }
 }
 
+async function decideLink(interaction: ButtonInteraction, ctx: AppContext): Promise<void> {
+  const parsed = /^link:(approve|deny):(\d+)$/.exec(interaction.customId);
+  if (!parsed) return;
+  const action = parsed[1] as 'approve' | 'deny';
+  const discordId = parsed[2];
+  if (!canManage(interaction, ctx.env.ADMIN_ROLE_ID)) {
+    await interaction.reply({
+      flags: MessageFlags.Ephemeral,
+      content: 'You do not have permission to approve or deny link requests.',
+    });
+    return;
+  }
+
+  await interaction.deferUpdate();
+  if (action === 'approve') {
+    const result = ctx.db.approvePending(discordId);
+    if (result.status === 'missing') {
+      await interaction.followUp({ flags: MessageFlags.Ephemeral, content: 'That link request was already handled.' });
+      return;
+    }
+    if (result.status === 'seerr-taken') {
+      ctx.db.denyPending(discordId);
+      await dm(ctx, discordId, 'Your link request was declined. Contact an admin if that seems wrong.');
+      const embed = keptEmbed(interaction)
+        .setColor(0xed4245)
+        .setFooter({ text: `Denied by ${interaction.user.tag}` });
+      await interaction.editReply({ embeds: [embed], components: [linkButtons(discordId, true)] });
+      return;
+    }
+    await dm(ctx, discordId, "You're linked. You can request movies and shows with /request.");
+    const embed = keptEmbed(interaction)
+      .setColor(GREEN)
+      .setFooter({ text: `Approved by ${interaction.user.tag}` });
+    await interaction.editReply({ embeds: [embed], components: [linkButtons(discordId, true)] });
+    return;
+  }
+
+  const denied = ctx.db.denyPending(discordId);
+  if (!denied) {
+    await interaction.followUp({ flags: MessageFlags.Ephemeral, content: 'That link request was already handled.' });
+    return;
+  }
+  await dm(ctx, discordId, 'Your link request was declined. Contact an admin if that seems wrong.');
+  const embed = keptEmbed(interaction)
+    .setColor(0xed4245)
+    .setFooter({ text: `Denied by ${interaction.user.tag}` });
+  await interaction.editReply({ embeds: [embed], components: [linkButtons(discordId, true)] });
+}
+
+async function postLinkRequest(
+  interaction: ChatInputCommandInteraction,
+  ctx: AppContext,
+  pending: PendingLink,
+): Promise<boolean> {
+  const channel = await ctx.client.channels.fetch(ctx.env.ADMIN_CHANNEL_ID);
+  if (!channel?.isSendable()) return false;
+  const embed = new EmbedBuilder()
+    .setTitle('Link account')
+    .setColor(YELLOW)
+    .addFields(
+      { name: 'Discord', value: `${interaction.user} (${interaction.user.tag})` },
+      { name: 'Name they typed', value: `${pending.username} (${pending.service})` },
+      {
+        name: 'Seerr user',
+        value: [
+          `Display name: ${pending.displayName ?? '—'}`,
+          `Jellyfin: ${pending.jellyfinUsername ?? '—'}`,
+          `Plex: ${pending.plexUsername ?? '—'}`,
+          `Id: ${pending.seerrUserId}`,
+        ].join('\n'),
+      },
+    );
+  try {
+    await channel.send({
+      embeds: [embed],
+      components: [linkButtons(pending.discordId, false)],
+      allowedMentions: { users: [pending.discordId] },
+    });
+    return true;
+  } catch (error) {
+    console.error('link request post failed', error);
+    return false;
+  }
+}
+
+function linkButtons(discordId: string, disabled: boolean): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`link:approve:${discordId}`)
+      .setLabel('Approve')
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(disabled),
+    new ButtonBuilder()
+      .setCustomId(`link:deny:${discordId}`)
+      .setLabel('Deny')
+      .setStyle(ButtonStyle.Danger)
+      .setDisabled(disabled),
+  );
+}
+
+function accountGate(ctx: AppContext, discordId: string): { ok: true; link: LinkRecord } | { ok: false; message: string } {
+  const link = ctx.db.getByDiscord(discordId);
+  if (link) return { ok: true, link };
+  if (ctx.db.getPendingByDiscord(discordId)) {
+    return { ok: false, message: 'Your link is awaiting approval.' };
+  }
+  return { ok: false, message: 'Link your Jellyfin or Plex account first with /link-account.' };
+}
+
+async function dm(ctx: AppContext, discordId: string, content: string): Promise<void> {
+  try {
+    const user = await ctx.client.users.fetch(discordId);
+    await user.send(content);
+  } catch {
+    console.warn('DM failed', discordId);
+  }
+}
+
 function canManage(interaction: ButtonInteraction, adminRoleId: string | undefined): boolean {
-  if (interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) return true;
+  if (interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) return true;
   if (!adminRoleId || !interaction.member) return false;
   const roles = interaction.member.roles;
   if (Array.isArray(roles)) return roles.includes(adminRoleId);

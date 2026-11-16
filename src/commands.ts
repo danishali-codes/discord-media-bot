@@ -3,7 +3,7 @@ import { SlashCommandBuilder, type RESTPostAPIChatInputApplicationCommandsJSONBo
 export function slashCommandBody(): RESTPostAPIChatInputApplicationCommandsJSONBody[] {
   const link = new SlashCommandBuilder()
     .setName('link-account')
-    .setDescription('Link Discord to your Jellyfin or Plex account in Seerr')
+    .setDescription('Ask an admin to link your Jellyfin or Plex account')
     .addStringOption((option) =>
       option
         .setName('username')

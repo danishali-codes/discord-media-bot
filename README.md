@@ -8,7 +8,7 @@ v1 stops there. Later commands are listed at the bottom and are not implemented.
 
 | Command | Who | What it does |
 | --- | --- | --- |
-| `/link-account username service` | Any member | Matches `username` to a Seerr user (`jellyfin` or `plex`) and stores the Discord id. |
+| `/link-account username service` | Any member | Matches a Seerr user and asks an admin to approve the link. |
 | `/unlink-account` | Any member | Removes that link. |
 | `/request title` | Linked member | Search Seerr and request a movie, or a whole series / its latest season. Only works in `REQUESTS_CHANNEL_ID`. |
 
@@ -23,7 +23,7 @@ When someone joins, the bot DMs them the name of `/link-account`. They run that 
 3. Enable the privileged **Server Members Intent**. The bot asks Discord for the Guilds and Guild Members intents. Message Content is not used. Without Server Members Intent the process will not stay connected, and join DMs will not fire.
 4. OAuth2 URL Generator: scopes `bot` and `applications.commands`. Bot permissions: View Channels, Send Messages, Embed Links. Invite it into the server.
 5. Copy the application id into `DISCORD_CLIENT_ID`. Enable Discord developer mode, then copy the server id (`DISCORD_GUILD_ID`), the admin channel id (`ADMIN_CHANNEL_ID`), and the requests channel id (`REQUESTS_CHANNEL_ID`).
-6. Optional: copy a role id into `ADMIN_ROLE_ID`. Approve and Decline otherwise require the Discord Administrator permission.
+6. Optional: copy a role id into `ADMIN_ROLE_ID`. Approve and Deny otherwise require Manage Server. A member with Administrator can press them too, because that permission includes Manage Server.
 
 Register the slash commands after the bot is in the server (see Deploy). Registration is guild-scoped, so the commands show up immediately in that server only. They are typed in a server channel, including after the join DM.
 
@@ -36,13 +36,13 @@ Copy `.env.example` to `.env`. Values stay out of git.
 | `DISCORD_TOKEN` | Bot token. |
 | `DISCORD_CLIENT_ID` | Application id. |
 | `DISCORD_GUILD_ID` | Server where commands are registered and join DMs are sent. |
-| `ADMIN_CHANNEL_ID` | Channel that receives pending-request embeds. |
+| `ADMIN_CHANNEL_ID` | Channel for pending media requests and link confirmations. |
 | `REQUESTS_CHANNEL_ID` | Only channel where `/request` runs. |
 | `SEERR_URL` | Seerr base URL, for example `http://192.168.1.14:5055`. No path, no trailing slash required. |
 | `SEERR_API_KEY` | Admin API key. It must be allowed to list users, create requests for another user (`userId`), and approve or decline. |
 | `WEBHOOK_SECRET` | Exact `Authorization` header value Seerr sends. No `Bearer` prefix unless you put the same prefix in both places. |
 | `WEBHOOK_PORT` | Port the webhook listens on, inside the container and on the host. |
-| `ADMIN_ROLE_ID` | Optional. Members with this role may press Approve / Decline, along with anyone who has Administrator. |
+| `ADMIN_ROLE_ID` | Optional. Members with this role may approve or deny, along with anyone who has Manage Server. |
 
 The SQLite file is `data/bot.sqlite` (mounted at `/app/data` in Docker). Deleting it drops every account link.
 
@@ -110,7 +110,7 @@ docker compose run --rm --no-deps media-bot node dist/register.js
 
 `compose.yaml` sets `container_name: media-bot`, `restart: unless-stopped`, `TZ=Asia/Dubai`, mounts `./data` at `/app/data`, and loads `.env`. The webhook port is published from `WEBHOOK_PORT`, which Compose reads from that same `.env`.
 
-Re-run the register command after command options change. You do not need to re-register when only the bot code changes, but you do need `docker compose up -d --build`.
+Re-run the register command after a command name, option, or description changes. You do not need to re-register when only the bot code changes, but you do need `docker compose up -d --build`.
 
 On a machine with Node 20+ you can also `npm ci`, `npm run build`, and `npm run register` outside Docker. `npm test` runs the Seerr client and username-matching tests. It does not connect to Discord or Seerr.
 
@@ -120,7 +120,9 @@ Search calls `GET /api/v1/search?query=...` with the query percent-encoded (`%20
 
 Choosing a movie sends `POST /api/v1/request` with `mediaType`, `mediaId` (TMDB id), and `userId` of the linked Seerr user. Choosing a show asks for all seasons or the latest season. All seasons sends `seasons: "all"` (Seerr skips specials). Latest season sends the highest season number above 0. If Seerr says the title is already requested, already available, or has no seasons left, the bot shows that instead of an error. Quota and permission errors are shown as Seerr wrote them.
 
-Account linking loads `GET /api/v1/user?take=100` (and further pages when needed). A Jellyfin link matches `jellyfinUsername`, then `displayName`. A Plex link matches `plexUsername`, then `displayName`. Matching ignores case and surrounding spaces. The other service's username is not a match. Two matches at the same step are reported as ambiguous instead of guessing. v1 saves the link as soon as the name matches. A member who knows someone else's Jellyfin or Plex username can claim that Seerr user until it is linked. There is no Seerr login step in this version.
+Account linking loads `GET /api/v1/user?take=100` (and further pages when needed). A Jellyfin link matches `jellyfinUsername`, then `displayName`. A Plex link matches `plexUsername`, then `displayName`. Matching ignores case and surrounding spaces. The other service's username is not a match. Two matches at the same step are reported as ambiguous instead of guessing.
+
+A match is not saved yet. The bot stores a pending link and posts it in the admin channel with the Discord user, the name they typed, and the Seerr user (display name, Jellyfin username, Plex username, and id). Approve saves the link and DMs the member. Deny drops it and DMs them to contact an admin. The admin message is edited with who pressed the button, and the buttons are disabled. Only Manage Server or `ADMIN_ROLE_ID` can press them. A member cannot open a second pending link, and a Seerr user cannot be pending or linked for two Discord users at once. `/request` works after approval. A pending member is told their link is awaiting approval.
 
 ## Roadmap
 
