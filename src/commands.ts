@@ -84,6 +84,21 @@ export function slashCommandBody(): RESTPostAPIChatInputApplicationCommandsJSONB
     .addStringOption((option) =>
       option.setName('service').setDescription('Container name').setRequired(true).setAutocomplete(true),
     );
+  const ask = new SlashCommandBuilder()
+    .setName('ask')
+    .setDescription('Send a message to a MausBot')
+    .addStringOption((option) =>
+      option.setName('bot').setDescription('Which bot').setRequired(true).setAutocomplete(true),
+    )
+    .addStringOption((option) =>
+      option.setName('message').setDescription('What to say').setRequired(true).setMaxLength(2000),
+    );
+  const askReset = new SlashCommandBuilder()
+    .setName('ask-reset')
+    .setDescription('Start a fresh MausBot chat')
+    .addStringOption((option) =>
+      option.setName('bot').setDescription('Which bot').setRequired(true).setAutocomplete(true),
+    );
   const unlinkUser = new SlashCommandBuilder()
     .setName('unlink')
     .setDescription("Remove another member's account link")
@@ -109,6 +124,8 @@ export function slashCommandBody(): RESTPostAPIChatInputApplicationCommandsJSONB
     pending.toJSON(),
     disk.toJSON(),
     restart.toJSON(),
+    ask.toJSON(),
+    askReset.toJSON(),
     unlinkUser.toJSON(),
   ];
 }

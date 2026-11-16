@@ -60,6 +60,8 @@ const ADMIN_HELP: Array<[string, string]> = [
   ['/disk', 'Disk use from Beszel.'],
   ['/restart', 'Restart an allowlisted container. Admin channel only, with a confirm button.'],
   ['/unlink', "Remove another member's link."],
+  ['/ask', "Chat with a MausBot. In that bot's channel it continues the thread; elsewhere it starts a new one."],
+  ['/ask-reset', 'Forget the stored MausBot thread so the next message starts fresh.'],
 ];
 
 export async function handleMemberCommand(interaction: ChatInputCommandInteraction, ctx: AppContext): Promise<boolean> {

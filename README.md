@@ -28,6 +28,8 @@ Re-register slash commands after this update (`node dist/register.js`, or the Do
 | `/disk` | Admin | Disk percent per Beszel system. A warning shows at 80% or more. |
 | `/restart service` | Admin | Restarts one allowlisted container through Arcane. Only in the admin channel, and only after a confirm button. |
 | `/unlink user` | Admin | Removes that member's link and any pending link, then DMs them. |
+| `/ask bot message` | Admin | Sends a message to a MausBot through n8n. In that bot's channel the reply is public and continues the stored thread. Anywhere else the reply is ephemeral and starts a new thread. |
+| `/ask-reset bot` | Admin | Forgets that bot's stored thread. `!new` in the bot's channel does the same for that channel. |
 
 Member commands reply ephemerally (only you see them), except the admin cards from `/pending` and the public announcement. `/request` has to be used in the requests channel. Discord does not offer guild commands inside a DM, so registration stays guild-scoped.
 
@@ -41,8 +43,8 @@ Admin means Manage Server, or the optional `ADMIN_ROLE_ID`. Administrator counts
 
 1. Create an application at <https://discord.com/developers/applications>.
 2. Bot tab: reset the token. That value is `DISCORD_TOKEN`.
-3. Enable the privileged **Server Members Intent**. The bot asks Discord for the Guilds and Guild Members intents. Message Content is not used. Without Server Members Intent the process will not stay connected, and join DMs will not fire.
-4. OAuth2 URL Generator: scopes `bot` and `applications.commands`. Bot permissions: View Channels, Send Messages, Embed Links. Invite it into the server.
+3. Enable the privileged **Server Members Intent**. The bot asks Discord for the Guilds and Guild Members intents. Without Server Members Intent the process will not stay connected, and join DMs will not fire. Message Content is off unless `BOT_CHANNELS` is set. If you set that, also enable the privileged **Message Content Intent** before restarting the bot. The process asks for Guild Messages and Message Content only in that case, and Discord disconnects it if the portal toggle is still off.
+4. OAuth2 URL Generator: scopes `bot` and `applications.commands`. Bot permissions: View Channels, Send Messages, Embed Links. Add Reactions is used for the ⛔ mark on non-admin messages in a MausBot channel. Invite it into the server.
 5. Copy the application id into `DISCORD_CLIENT_ID`. Enable Discord developer mode, then copy the server id (`DISCORD_GUILD_ID`), the admin channel id (`ADMIN_CHANNEL_ID`), and the requests channel id (`REQUESTS_CHANNEL_ID`).
 6. Optional: copy a role id into `ADMIN_ROLE_ID`. Approve and Deny otherwise require Manage Server. A member with Administrator can press them too, because that permission includes Manage Server.
 
@@ -80,6 +82,9 @@ Copy `.env.example` to `.env`. Values stay out of git.
 | `RESTART_ALLOWLIST` | Optional. Comma-separated container names `/restart` may touch. Anything else is refused. Names containing `:` are ignored. |
 | `NEW_THIS_WEEK_CRON` | Optional. Five-field cron `minute hour * * weekday` in Asia/Dubai. Default `0 20 * * 0` (Sunday 20:00). Weekday may be `0`-`7` or `sun`-`sat`. |
 | `INACTIVE_DAYS` | Optional. Default 60. Linked members with no Tautulli or Jellyfin activity in that many days are listed in the admin channel. |
+| `N8N_BOTS_WEBHOOK_URL` | Optional. n8n webhook for MausBot chat. If blank, `/ask` and the bot channels do nothing. |
+| `N8N_BOTS_SECRET` | Optional. Sent as the raw `Authorization` header to that webhook. No `Bearer` prefix unless you put the same prefix in n8n. |
+| `BOT_CHANNELS` | Optional. `hestia:123456789012345678,iris:234567890123456789`. Bot name, colon, Discord channel id. The first mapping wins if a name or channel is repeated. |
 
 Every new variable is optional. Leave it blank and that feature says it is not configured, or stays quiet. The original variables are still required.
 
@@ -198,4 +203,46 @@ Account linking loads `GET /api/v1/user?take=100` (and further pages when needed
 
 A match is not saved yet. The bot stores a pending link and posts it in the admin channel with the Discord user, the name they typed, and the Seerr user (display name, Jellyfin username, Plex username, and id). Approve saves the link and DMs the member. Deny drops it and DMs them to contact an admin. The admin message is edited with who pressed the button, and the buttons are disabled. Only Manage Server or `ADMIN_ROLE_ID` can press them. A member cannot open a second pending link, and a Seerr user cannot be pending or linked for two Discord users at once. `/request` works after approval. A pending member is told their link is awaiting approval.
 
-The Seerr API key needs to list users, create and approve requests, and create and resolve issues. Forwarding the normalized webhook event to n8n is still not implemented.
+The Seerr API key needs to list users, create and approve requests, and create and resolve issues. Forwarding the normalized Seerr webhook event to n8n is still not implemented. MausBot chat is a separate n8n webhook, described below.
+
+## MausBot chat
+
+n8n holds every MausBot bot id and `bak_` key. This bot never sees them. It only posts to `N8N_BOTS_WEBHOOK_URL`.
+
+OpenMausBot's Bot API listens on `127.0.0.1:8800`. The n8n container has to be able to reach that address. This Discord bot does not connect to it.
+
+In a channel listed in `BOT_CHANNELS`, an admin message that is not from a bot is forwarded. Other people's messages are ignored, and the bot reacts with ⛔ when it can. `!new` in that channel clears the stored thread instead of sending it. Admins are Manage Server or `ADMIN_ROLE_ID`, the same check as the other admin commands.
+
+There is one stored thread per bot and channel, in `data/bot.sqlite`. `/ask` continues it only inside that bot's channel. Used anywhere else, `/ask` sends `thread: null` and does not save the thread n8n returns. `/ask-reset` deletes every stored thread for that bot. Each person can send one message every 6 seconds.
+
+The bot shows a typing indicator while it waits. The webhook call times out after 70 seconds. If n8n says the bot is still working, this bot polls every 10 seconds for up to 5 minutes, then says to check MausBot.
+
+Request:
+
+```json
+{
+  "action": "send",
+  "bot": "hestia",
+  "message": "What is on tonight?",
+  "thread": null,
+  "discordUserId": "123",
+  "discordUsername": "danish",
+  "channelId": "456"
+}
+```
+
+A follow-up in the same bot channel sends the stored `thread` string instead of `null`. Polling:
+
+```json
+{ "action": "poll", "bot": "hestia", "thread": "thread-id" }
+```
+
+Response:
+
+```json
+{ "reply": "Tonight: ...", "thread": "thread-id", "status": "working" }
+```
+
+`reply` is shown when it is non-empty, split into Discord messages of at most 2000 characters. Code fences that cross a split are closed and reopened. `status` is used when there is no reply yet: `working` keeps polling, and `needs_approval` posts `⚠️ <bot> needs approval in the MausBot app`. Failures are a short message in Discord. The detail stays in the container logs.
+
+Re-register slash commands after this update so `/ask` and `/ask-reset` appear.

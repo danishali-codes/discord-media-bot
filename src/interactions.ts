@@ -9,6 +9,7 @@ import {
   type Interaction,
 } from 'discord.js';
 import { autocompleteRestart, handleAdminCommand, handleAdminComponent } from './admin-commands';
+import { askBot, autocompleteBots, resetBot } from './bot-chat';
 import { canManage, dm, failureText } from './access';
 import type { AppContext } from './context';
 import type { PendingLink } from './db';
@@ -57,10 +58,15 @@ async function handleInteraction(interaction: Interaction, ctx: AppContext): Pro
   if (interaction.isAutocomplete() && interaction.commandName === 'restart') {
     return autocompleteRestart(interaction, ctx);
   }
+  if (interaction.isAutocomplete() && (interaction.commandName === 'ask' || interaction.commandName === 'ask-reset')) {
+    return autocompleteBots(interaction, ctx);
+  }
   if (interaction.isChatInputCommand()) {
     if (interaction.commandName === 'link-account') return linkAccount(interaction, ctx);
     if (interaction.commandName === 'unlink-account') return unlinkAccount(interaction, ctx);
     if (interaction.commandName === 'request') return requestTitle(interaction, ctx);
+    if (interaction.commandName === 'ask') return askBot(interaction, ctx);
+    if (interaction.commandName === 'ask-reset') return resetBot(interaction, ctx);
     if (await handleMemberCommand(interaction, ctx)) return;
     if (await handleAdminCommand(interaction, ctx)) return;
     return;
