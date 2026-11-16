@@ -1,4 +1,6 @@
-const TMDB_POSTER = 'https://image.tmdb.org/t/p/w300';
+import { libraryState, mapUserRequest, type UserRequest } from './check-format';
+
+const TMDB_POSTER = 'https://image.tmdb.org/t/p';
 const USER_PAGE_SIZE = 100;
 
 export class SeerrRequestError extends Error {
@@ -19,6 +21,9 @@ export type SearchHit = {
   title: string;
   year?: number;
   posterPath?: string;
+  overview?: string;
+  /** Set when Seerr already has a media record for this hit. */
+  library?: 'available' | 'partial' | 'requested' | 'absent';
 };
 
 export type SeerrUser = {
@@ -34,6 +39,8 @@ export type MovieDetails = {
   year?: number;
   posterPath?: string;
   availability: 'available' | 'requested' | 'open';
+  /** Seerr's own media row id. Required to open an issue. */
+  seerrMediaId?: number;
 };
 
 export type TvDetails = {
@@ -43,6 +50,16 @@ export type TvDetails = {
   posterPath?: string;
   /** Regular seasons only. Specials (season 0) are left out. */
   seasonNumbers: number[];
+  seerrMediaId?: number;
+  tvdbId?: number;
+  availability?: MovieDetails['availability'];
+};
+
+export type AvailableMedia = {
+  mediaType: MediaKind;
+  tmdbId: number;
+  tvdbId?: number;
+  addedAt?: string;
 };
 
 export type SeerrRequestSummary = {
@@ -66,12 +83,12 @@ export type CreateRequestResult =
 
 type FetchImpl = typeof fetch;
 
-export function posterUrl(path?: string | null): string | undefined {
+export function posterUrl(path?: string | null, size: 'w300' | 'w342' = 'w300'): string | undefined {
   if (!path) return undefined;
   const trimmed = path.trim();
   if (!trimmed || trimmed === 'null' || /\/null$/.test(trimmed)) return undefined;
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `${TMDB_POSTER}${trimmed.startsWith('/') ? trimmed : `/${trimmed}`}`;
+  return `${TMDB_POSTER}/${size}${trimmed.startsWith('/') ? trimmed : `/${trimmed}`}`;
 }
 
 export function yearOf(date?: string | null): number | undefined {
@@ -139,12 +156,14 @@ export class SeerrClient {
     const record = asRecord(body);
     if (!record) throw new SeerrRequestError(status, 'Could not load that movie');
     const mediaInfo = asRecord(record.mediaInfo);
+    const seerrMediaId = positiveId(mediaInfo?.id);
     return {
       mediaId,
       title: asString(record.title) ?? asString(record.originalTitle) ?? `Movie ${mediaId}`,
       year: yearOf(asString(record.releaseDate)),
       posterPath: asString(record.posterPath),
       availability: availabilityOf(mediaInfo?.status),
+      ...(seerrMediaId ? { seerrMediaId } : {}),
     };
   }
 
@@ -155,12 +174,18 @@ export class SeerrClient {
     }
     const record = asRecord(body);
     if (!record) throw new SeerrRequestError(status, 'Could not load that show');
+    const mediaInfo = asRecord(record.mediaInfo);
+    const seerrMediaId = positiveId(mediaInfo?.id);
+    const tvdbId = positiveId(record.tvdbId) ?? positiveId(mediaInfo?.tvdbId);
     return {
       mediaId,
       title: asString(record.name) ?? asString(record.originalName) ?? `Show ${mediaId}`,
       year: yearOf(asString(record.firstAirDate)),
       posterPath: asString(record.posterPath),
       seasonNumbers: seasonNumbers(record.seasons),
+      ...(seerrMediaId ? { seerrMediaId } : {}),
+      ...(tvdbId ? { tvdbId } : {}),
+      ...(mediaInfo ? { availability: availabilityOf(mediaInfo.status) } : {}),
     };
   }
 
@@ -200,6 +225,70 @@ export class SeerrClient {
     const message = messageOf(body, 'That has already been requested or is available.');
     if (isAlready(status, message)) return { outcome: 'already', message };
     throw new SeerrRequestError(status, messageOf(body, `Seerr returned ${status}`));
+  }
+
+  async listUserRequests(userId: number, take = 10): Promise<UserRequest[]> {
+    const { status, body } = await this.request(
+      `/api/v1/user/${userId}/requests?take=${take}&skip=0&filter=all&sort=added`,
+    );
+    if (status !== 200) throw new SeerrRequestError(status, messageOf(body, 'Could not load your requests'));
+    return sortRequests(resultsOf(body));
+  }
+
+  async listPending(take = 5): Promise<UserRequest[]> {
+    const { status, body } = await this.request(`/api/v1/request?take=${take}&skip=0&filter=pending&sort=added`);
+    if (status !== 200) throw new SeerrRequestError(status, messageOf(body, 'Could not load pending requests'));
+    return sortRequests(resultsOf(body)).filter((request) => request.requestStatus === 'pending');
+  }
+
+  async listAvailableMedia(take = 40): Promise<AvailableMedia[]> {
+    const { status, body } = await this.request(
+      `/api/v1/media?take=${take}&skip=0&filter=available&sort=mediaAdded`,
+    );
+    if (status !== 200) throw new SeerrRequestError(status, messageOf(body, 'Could not load recent media'));
+    return resultsOfRaw(body).flatMap((item) => {
+      const raw = asRecord(item);
+      const mediaType = asMediaKind(raw?.mediaType);
+      const tmdbId = positiveId(raw?.tmdbId);
+      if (!raw || !mediaType || !tmdbId) return [];
+      const tvdbId = positiveId(raw.tvdbId);
+      const addedAt = asString(raw.mediaAddedAt);
+      return [{ mediaType, tmdbId, ...(tvdbId ? { tvdbId } : {}), ...(addedAt ? { addedAt } : {}) }];
+    });
+  }
+
+  async watchlist(userId: number, take = 5): Promise<SearchHit[]> {
+    const { status, body } = await this.request(`/api/v1/user/${userId}/watchlist?take=${take}&skip=0`);
+    if (status !== 200) throw new SeerrRequestError(status, messageOf(body, 'Could not load your watchlist'));
+    return resultsOfRaw(body).flatMap((item) => {
+      const hit = mapHit(item);
+      return hit ? [hit] : [];
+    });
+  }
+
+  async updateSeasons(requestId: number, seasons: number[]): Promise<void> {
+    const { status, body } = await this.request(`/api/v1/request/${requestId}`, {
+      method: 'PUT',
+      body: { mediaType: 'tv', seasons },
+    });
+    if (status === 200 || status === 204) return;
+    throw new SeerrRequestError(status, messageOf(body, 'Could not change the seasons on that request'));
+  }
+
+  async createIssue(input: { issueType: number; message: string; mediaId: number }): Promise<number> {
+    const { status, body } = await this.request('/api/v1/issue', { method: 'POST', body: input });
+    if (status !== 200 && status !== 201) {
+      throw new SeerrRequestError(status, messageOf(body, 'Could not open a Seerr issue'));
+    }
+    const id = positiveId(asRecord(body)?.id);
+    if (!id) throw new SeerrRequestError(status, 'Seerr did not return an issue id');
+    return id;
+  }
+
+  async resolveIssue(issueId: number): Promise<void> {
+    const { status, body } = await this.request(`/api/v1/issue/${issueId}/resolved`, { method: 'POST' });
+    if (status === 200 || status === 204) return;
+    throw new SeerrRequestError(status, messageOf(body, 'Could not resolve that Seerr issue'));
   }
 
   async approve(requestId: number): Promise<void> {
@@ -255,13 +344,41 @@ function mapHit(value: unknown): SearchHit | undefined {
     mediaType === 'tv' ? asString(raw.name) ?? asString(raw.title) : asString(raw.title) ?? asString(raw.name);
   if (!title) return undefined;
   const date = mediaType === 'tv' ? asString(raw.firstAirDate) : asString(raw.releaseDate);
+  const overview = asString(raw.overview);
+  const mediaInfo = asRecord(raw.mediaInfo);
+  const library = mediaInfo ? libraryState(mediaInfo.status) : undefined;
   return {
     mediaType,
     mediaId,
     title,
     year: yearOf(date),
     posterPath: asString(raw.posterPath),
+    ...(overview ? { overview } : {}),
+    ...(library ? { library } : {}),
   };
+}
+
+function resultsOf(body: unknown): UserRequest[] {
+  return resultsOfRaw(body).flatMap((item) => {
+    const mapped = mapUserRequest(item);
+    return mapped ? [mapped] : [];
+  });
+}
+
+function resultsOfRaw(body: unknown): unknown[] {
+  if (Array.isArray(body)) return body;
+  const results = asRecord(body)?.results;
+  return Array.isArray(results) ? results : [];
+}
+
+function sortRequests(requests: UserRequest[]): UserRequest[] {
+  return [...requests].sort((left, right) => timeOf(right.createdAt) - timeOf(left.createdAt));
+}
+
+function timeOf(iso?: string): number {
+  if (!iso) return 0;
+  const time = new Date(iso).getTime();
+  return Number.isNaN(time) ? 0 : time;
 }
 
 function mapUser(value: unknown): SeerrUser | undefined {

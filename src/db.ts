@@ -57,6 +57,10 @@ export class LinkStore {
         jellyfin_username TEXT,
         plex_username TEXT,
         created_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS job_stamps (
+        name TEXT PRIMARY KEY,
+        value TEXT NOT NULL
       )
     `);
   }
@@ -154,6 +158,30 @@ export class LinkStore {
     if (!pending) return undefined;
     this.db.prepare('DELETE FROM pending_links WHERE discord_id = ?').run(discordId);
     return pending;
+  }
+
+  listLinks(): LinkRecord[] {
+    const rows = this.db
+      .prepare('SELECT discord_id, seerr_user_id, username, service FROM account_links')
+      .all() as LinkRow[];
+    return rows.flatMap((row) => {
+      const link = mapRow(row);
+      return link ? [link] : [];
+    });
+  }
+
+  getStamp(name: string): string | undefined {
+    const row = this.db.prepare('SELECT value FROM job_stamps WHERE name = ?').get(name) as { value: string } | undefined;
+    return row?.value;
+  }
+
+  setStamp(name: string, value: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO job_stamps (name, value) VALUES (?, ?)
+         ON CONFLICT(name) DO UPDATE SET value = excluded.value`,
+      )
+      .run(name, value);
   }
 
   unlink(discordId: string): boolean {
