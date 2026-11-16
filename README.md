@@ -74,7 +74,7 @@ Copy `.env.example` to `.env`. Values stay out of git.
 | `STATUS_CHANNEL_ID` | Optional. Where Kuma down / back up alerts are posted. If blank, the webhook is accepted and ignored. |
 | `ANNOUNCE_CHANNEL_ID` | Optional. `/announce` and the Sunday "New this week" post. If blank, `/announce` uses the current channel and the weekly post is skipped. |
 | `SONARR_URL` | Optional. Sonarr base URL. Settings → General → API Key is `SONARR_API_KEY`. Used by `/upcoming`. |
-| `TAUTULLI_URL` | Optional. Tautulli base URL. Settings → Web Interface → API key is `TAUTULLI_API_KEY`. Plex watch history only. |
+| `TAUTULLI_URL` | Optional. Tautulli base URL. Settings → Web Interface → API key is `TAUTULLI_API_KEY`. Plex watch history only. `/stats` and the inactivity check match Tautulli on the Seerr user's Plex username, not the name typed in `/link-account`. Jellyfin activity uses the Seerr user's Jellyfin username. |
 | `BESZEL_URL` | Optional. Beszel hub URL. `BESZEL_EMAIL` and `BESZEL_PASSWORD` are the admin login. Used by `/disk`. |
 | `ARCANE_URL` | Optional. Arcane base URL. System → API Keys is `ARCANE_API_KEY`. `ARCANE_ENV_ID` is the environment id (`0` is the local Docker engine). |
 | `RESTART_ALLOWLIST` | Optional. Comma-separated container names `/restart` may touch. Anything else is refused. Names containing `:` are ignored. |

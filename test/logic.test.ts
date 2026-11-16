@@ -10,7 +10,8 @@ import {
   requestMatches,
 } from '../src/check-format';
 import { formatMonitor, parseKumaWebhook, parseStatusPage } from '../src/kuma';
-import { classifyActivity, filterUpcoming, groupNewItems, newItemDetail } from '../src/library';
+import { mapJellyfinNewItem } from '../src/jellyfin';
+import { classifyActivity, filterUpcoming, groupNewItems, mediaUsernames, newItemDetail } from '../src/library';
 import { collectLinks, parseExtraLinks } from '../src/links';
 import { buildIssue, chooseReportTarget, parseProblem } from '../src/report';
 import { isScheduleDue, parseCron } from '../src/schedule';
@@ -183,6 +184,30 @@ describe('new items', () => {
       ],
     );
   });
+
+  it('groups a Jellyfin series with its episodes by the series id', () => {
+    const series = mapJellyfinNewItem({
+      Id: 'abc',
+      Name: 'The Bear',
+      Type: 'Series',
+      ProductionYear: 2022,
+      DateCreated: '2026-11-01T00:00:00.000Z',
+    });
+    const episode = mapJellyfinNewItem({
+      Name: 'Pilot',
+      Type: 'Episode',
+      SeriesId: 'abc',
+      SeriesName: 'The Bear',
+      DateCreated: '2026-11-14T00:00:00.000Z',
+    });
+    assert.equal(series?.seriesKey, 'abc');
+    assert.equal(episode?.seriesKey, 'abc');
+    const grouped = groupNewItems([series!, episode!]);
+    assert.equal(grouped.length, 1);
+    assert.equal(grouped[0]?.title, 'The Bear');
+    assert.equal(grouped[0]?.episodeCount, 1);
+    assert.equal(newItemDetail(grouped[0]!), '1 new episode');
+  });
 });
 
 describe('upcoming', () => {
@@ -223,6 +248,17 @@ describe('schedule', () => {
     assert.equal(isScheduleDue(parseCron('0 20 * * 0')!, sundayDubai, 'Asia/Dubai', first.key).due, false);
     assert.equal(isScheduleDue(parseCron('0 20 * * 0')!, new Date('2026-11-15T16:01:00.000Z'), 'Asia/Dubai', undefined).due, false);
     assert.equal(isScheduleDue(parseCron('0 20 * * 1')!, sundayDubai, 'Asia/Dubai', undefined).due, false);
+  });
+});
+
+describe('media usernames', () => {
+  it('uses the Seerr Plex and Jellyfin logins, not a display name', () => {
+    assert.deepEqual(
+      mediaUsernames({ plexUsername: 'ada', jellyfinUsername: ' ada-jf ' }),
+      { plex: 'ada', jellyfin: 'ada-jf' },
+    );
+    assert.deepEqual(mediaUsernames({ plexUsername: null, jellyfinUsername: '  ' }), {});
+    assert.deepEqual(mediaUsernames(undefined), {});
   });
 });
 

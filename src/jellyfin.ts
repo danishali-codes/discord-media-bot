@@ -117,13 +117,17 @@ export class JellyfinClient {
   }
 }
 
+export function mapJellyfinNewItem(raw: Record<string, unknown>): RawNewItem | undefined {
+  return mapNewItem(raw)[0];
+}
+
 function mapNewItem(raw: Record<string, unknown>): RawNewItem[] {
   const type = asString(raw.Type);
   const title = asString(raw.Name);
   if (!title || (type !== 'Movie' && type !== 'Series' && type !== 'Episode')) return [];
   const kind = type === 'Movie' ? 'movie' : type === 'Series' ? 'series' : 'episode';
   const seriesTitle = asString(raw.SeriesName);
-  const seriesId = asString(raw.SeriesId);
+  const seriesId = asString(raw.SeriesId) ?? (kind === 'series' ? asString(raw.Id) : undefined);
   const tmdbId = positiveId(asRecord(raw.ProviderIds)?.Tmdb);
   const year = yearOf(raw.ProductionYear);
   const overview = asString(raw.Overview);

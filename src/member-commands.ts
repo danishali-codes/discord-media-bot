@@ -21,7 +21,7 @@ import { formatRequestLine, requestMatches, type UserRequest } from './check-for
 import type { AppContext } from './context';
 import { requestJson } from './http';
 import { JellyfinClient, jellyfinConfigured } from './jellyfin';
-import { filterUpcoming } from './library';
+import { filterUpcoming, mediaUsernames } from './library';
 import { collectLinks } from './links';
 import { collectNew } from './new-media';
 import { newEmbed, resultViews } from './present';
@@ -352,11 +352,14 @@ async function stats(interaction: ChatInputCommandInteraction, ctx: AppContext):
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   try {
     const client = new TautulliClient(ctx.env.TAUTULLI_URL, ctx.env.TAUTULLI_API_KEY);
-    const user = matchTautulliUser(await client.users(), gate.link.username);
+    const names = mediaUsernames(await ctx.seerr.getUser(gate.link.seerrUserId));
+    if (!names.plex) {
+      await interaction.editReply('This Seerr account has no Plex username. Tautulli only covers Plex.');
+      return;
+    }
+    const user = matchTautulliUser(await client.users(), names.plex);
     if (!user) {
-      await interaction.editReply(
-        `No Tautulli user matches "${gate.link.username}". Tautulli only covers Plex, so a Jellyfin-only account will not show up.`,
-      );
+      await interaction.editReply(`No Tautulli user matches "${names.plex}". Tautulli only covers Plex.`);
       return;
     }
     const [watch, history] = await Promise.all([client.watchStats(user.id), client.history(user.id, 5)]);
@@ -366,7 +369,7 @@ async function stats(interaction: ChatInputCommandInteraction, ctx: AppContext):
     const recent = history.map((item) => `• ${item.title}`);
     const embed = new EmbedBuilder()
       .setColor(BLURPLE)
-      .setTitle(`Stats for ${gate.link.username}`)
+      .setTitle(`Stats for ${names.plex}`)
       .setDescription([...lines, recent.length ? `\nRecent\n${recent.join('\n')}` : ''].filter(Boolean).join('\n').slice(0, 4000) || 'Tautulli returned no watch stats.');
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {

@@ -1,7 +1,7 @@
 import { EmbedBuilder } from 'discord.js';
 import type { AppContext } from './context';
 import { JellyfinClient, jellyfinConfigured } from './jellyfin';
-import { classifyActivity, type ActivityHit } from './library';
+import { classifyActivity, mediaUsernames, type ActivityHit } from './library';
 import { collectNew } from './new-media';
 import { newEmbed } from './present';
 import { DEFAULT_WEEKLY_CRON, DUBAI, isScheduleDue, parseCron } from './schedule';
@@ -79,16 +79,19 @@ async function postInactive(ctx: AppContext): Promise<void> {
   const tautulliUsers = tautulliOn && ctx.env.TAUTULLI_URL && ctx.env.TAUTULLI_API_KEY
     ? await new TautulliClient(ctx.env.TAUTULLI_URL, ctx.env.TAUTULLI_API_KEY).users()
     : [];
+  const seerrUsers = new Map((await ctx.seerr.listUsers()).map((user) => [user.id, user]));
   const now = new Date();
   const inactive: string[] = [];
   for (const link of ctx.db.listLinks()) {
+    const names = mediaUsernames(seerrUsers.get(link.seerrUserId));
     const hits: ActivityHit[] = [];
     if (tautulliOn) {
-      const user = matchTautulliUser(tautulliUsers, link.username);
+      const user = names.plex ? matchTautulliUser(tautulliUsers, names.plex) : undefined;
       hits.push(user ? { matched: true, at: user.last } : { matched: false });
     }
     if (jellyfinOn) {
-      const user = jellyfinUsers.find((item) => item.name.toLowerCase() === link.username.toLowerCase());
+      const needle = names.jellyfin?.toLowerCase();
+      const user = needle ? jellyfinUsers.find((item) => item.name.toLowerCase() === needle) : undefined;
       hits.push(user ? { matched: true, at: user.last } : { matched: false });
     }
     if (classifyActivity(hits, now, days) === 'inactive') inactive.push(link.discordId);

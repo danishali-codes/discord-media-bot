@@ -89,6 +89,19 @@ export function filterUpcoming(
   );
 }
 
+/** Plex and Jellyfin logins stored on the Seerr user, not the name typed into /link-account. */
+export function mediaUsernames(user: { plexUsername?: string | null; jellyfinUsername?: string | null } | undefined): {
+  plex?: string;
+  jellyfin?: string;
+} {
+  const plex = user?.plexUsername?.trim();
+  const jellyfin = user?.jellyfinUsername?.trim();
+  return {
+    ...(plex ? { plex } : {}),
+    ...(jellyfin ? { jellyfin } : {}),
+  };
+}
+
 export function classifyActivity(
   hits: ActivityHit[],
   now: Date,

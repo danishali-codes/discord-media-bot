@@ -124,6 +124,13 @@ export class SeerrClient {
     });
   }
 
+  async getUser(userId: number): Promise<SeerrUser | undefined> {
+    const { status, body } = await this.request(`/api/v1/user/${userId}`);
+    if (status === 404) return undefined;
+    if (status !== 200) throw new SeerrRequestError(status, messageOf(body, 'Could not load that Seerr user'));
+    return mapUser(body);
+  }
+
   async listUsers(): Promise<SeerrUser[]> {
     const byId = new Map<number, SeerrUser>();
     let skip = 0;
