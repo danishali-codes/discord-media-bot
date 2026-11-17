@@ -28,6 +28,7 @@ export type SeerrNotification = {
   requestId?: number;
   requesterName?: string;
   seerrUserId?: number;
+  requestCreatedAt?: string;
 };
 
 const HANDLED = new Set([
@@ -61,11 +62,13 @@ export async function enrichSeerrWebhook(input: WebhookInput, seerr: SeerrClient
   let tmdbId = input.tmdbId;
   let requesterName = input.requesterName;
   let seerrUserId: number | undefined;
+  let requestCreatedAt: string | undefined;
 
   if (input.requestId) {
     try {
       const request = await seerr.getRequest(input.requestId);
       seerrUserId = request.seerrUserId;
+      requestCreatedAt = request.createdAt;
       requesterName = requesterName ?? request.requesterName;
       mediaType = mediaType ?? request.mediaType;
       tmdbId = tmdbId ?? request.tmdbId;
@@ -96,6 +99,7 @@ export async function enrichSeerrWebhook(input: WebhookInput, seerr: SeerrClient
     requestId: input.requestId,
     requesterName,
     seerrUserId,
+    requestCreatedAt,
   };
 }
 
@@ -141,6 +145,10 @@ async function postPending(event: SeerrNotification, ctx: AppContext): Promise<v
 async function dmRequester(event: SeerrNotification, ctx: AppContext): Promise<void> {
   const line = statusLine(event.notificationType);
   if (!line || !event.seerrUserId) return;
+  if (isStaleDecline(event, ctx.env.DECLINE_DM_MAX_AGE_DAYS)) {
+    console.log(`Skipping decline DM for old request ${event.requestId ?? 'unknown'}`);
+    return;
+  }
   const link = ctx.db.getBySeerr(event.seerrUserId);
   if (!link) return;
   try {
@@ -155,6 +163,22 @@ async function dmRequester(event: SeerrNotification, ctx: AppContext): Promise<v
   } catch {
     console.warn('DM failed', link.discordId);
   }
+}
+
+/**
+ * Seerr's Radarr/Sonarr scans decline old "orphaned" requests in bulk when the media is gone.
+ * Those fire the same MEDIA_DECLINED webhook as a real decline, so skip the DM when the request is old.
+ * An unknown request date keeps the DM.
+ */
+export function isStaleDecline(
+  event: Pick<SeerrNotification, 'notificationType' | 'requestCreatedAt'>,
+  maxAgeDays: number,
+  now: Date = new Date(),
+): boolean {
+  if (event.notificationType !== 'MEDIA_DECLINED' || !event.requestCreatedAt) return false;
+  const created = Date.parse(event.requestCreatedAt);
+  if (Number.isNaN(created)) return false;
+  return now.getTime() - created > maxAgeDays * 86_400_000;
 }
 
 function statusLine(notificationType: string): string | undefined {

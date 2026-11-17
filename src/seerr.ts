@@ -68,6 +68,7 @@ export type SeerrRequestSummary = {
   requesterName?: string;
   mediaType?: MediaKind;
   tmdbId?: number;
+  createdAt?: string;
 };
 
 export type CreateRequestInput = {
@@ -211,6 +212,7 @@ export class SeerrClient {
       requesterName: asString(requestedBy?.displayName) ?? asString(requestedBy?.username),
       mediaType: asMediaKind(media?.mediaType),
       tmdbId: positiveId(media?.tmdbId),
+      createdAt: asString(record?.createdAt),
     };
   }
 

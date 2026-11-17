@@ -231,6 +231,7 @@ describe('SeerrClient', () => {
         id: 15,
         requestedBy: { id: 3, displayName: 'Ada' },
         media: { mediaType: 'movie', tmdbId: 550 },
+        createdAt: '2026-11-01T10:00:00.000Z',
       });
     });
 
@@ -254,6 +255,7 @@ describe('SeerrClient', () => {
       requesterName: 'Ada',
       mediaType: 'movie',
       tmdbId: 550,
+      createdAt: '2026-11-01T10:00:00.000Z',
     });
     assert.equal(calls[2].url, 'http://seerr.test/api/v1/request/15');
   });
