@@ -81,6 +81,7 @@ Copy `.env.example` to `.env`. Values stay out of git.
 | `ARCANE_URL` | Optional. Arcane base URL. System → API Keys is `ARCANE_API_KEY`. `ARCANE_ENV_ID` is the environment id (`0` is the local Docker engine). |
 | `RESTART_ALLOWLIST` | Optional. Comma-separated container names `/restart` may touch. Anything else is refused. Names containing `:` are ignored. |
 | `NEW_THIS_WEEK_CRON` | Optional. Five-field cron `minute hour * * weekday` in Asia/Dubai. Default `0 20 * * 0` (Sunday 20:00). Weekday may be `0`-`7` or `sun`-`sat`. |
+| `DECLINE_DM_MAX_AGE_DAYS` | Optional. Default 14. A decline DM is only sent when the request was made within this many days. Seerr's scans decline old requests whose media was removed from Radarr or Sonarr; those stay quiet. |
 | `INACTIVE_DAYS` | Optional. Default 60. Linked members with no Tautulli or Jellyfin activity in that many days are listed in the admin channel. |
 | `N8N_BOTS_WEBHOOK_URL` | Optional. n8n webhook for MausBot chat. If blank, `/ask` and the bot channels do nothing. |
 | `N8N_BOTS_SECRET` | Optional. Sent as the raw `Authorization` header to that webhook. No `Bearer` prefix unless you put the same prefix in n8n. |
