@@ -28,6 +28,7 @@ Re-register slash commands after this update (`node dist/register.js`, or the Do
 | `/disk` | Admin | Disk percent per Beszel system. A warning shows at 80% or more. |
 | `/restart service` | Admin | Restarts one allowlisted container through Arcane. Only in the admin channel, and only after a confirm button. |
 | `/unlink user` | Admin | Removes that member's link and any pending link, then DMs them. |
+| `/purge count\|days [user] [include_pinned]` | Admin with Manage Messages | Deletes the last `count` messages (up to 1000) or everything from the last `days` days (up to 30) in the current channel. Optional filter by member; pinned messages are kept unless `include_pinned` is set. Shows how many will go and asks for a confirm button. Messages older than 14 days are deleted one at a time because Discord cannot bulk-delete them. The bot needs Manage Messages and Read Message History in that channel. |
 | `/ask bot message` | Admin | Sends a message to a MausBot through n8n. In that bot's channel the reply is public and continues the stored thread. Anywhere else the reply is ephemeral and starts a new thread. |
 | `/ask-reset bot` | Admin | Forgets that bot's stored thread. `!new` in the bot's channel does the same for that channel. |
 

@@ -60,6 +60,7 @@ const ADMIN_HELP: Array<[string, string]> = [
   ['/disk', 'Disk use from Beszel.'],
   ['/restart', 'Restart an allowlisted container. Admin channel only, with a confirm button.'],
   ['/unlink', "Remove another member's link."],
+  ['/purge', 'Delete the last N messages or the last N days in this channel, with a confirm button.'],
   ['/ask', "Chat with a MausBot. In that bot's channel it continues the thread; elsewhere it starts a new one."],
   ['/ask-reset', 'Forget the stored MausBot thread so the next message starts fresh.'],
 ];
