@@ -1,4 +1,4 @@
-import { SlashCommandBuilder, type RESTPostAPIChatInputApplicationCommandsJSONBody } from 'discord.js';
+import { PermissionFlagsBits, SlashCommandBuilder, type RESTPostAPIChatInputApplicationCommandsJSONBody } from 'discord.js';
 
 export function slashCommandBody(): RESTPostAPIChatInputApplicationCommandsJSONBody[] {
   const link = new SlashCommandBuilder()
@@ -104,6 +104,21 @@ export function slashCommandBody(): RESTPostAPIChatInputApplicationCommandsJSONB
     .setDescription("Remove another member's account link")
     .addUserOption((option) => option.setName('user').setDescription('Member to unlink').setRequired(true));
 
+  const purge = new SlashCommandBuilder()
+    .setName('purge')
+    .setDescription('Delete recent messages in this channel')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .addIntegerOption((option) =>
+      option.setName('count').setDescription('Delete the last N messages').setRequired(false).setMinValue(1).setMaxValue(1000),
+    )
+    .addIntegerOption((option) =>
+      option.setName('days').setDescription('Delete everything from the last N days').setRequired(false).setMinValue(1).setMaxValue(30),
+    )
+    .addUserOption((option) => option.setName('user').setDescription('Only messages from this member').setRequired(false))
+    .addBooleanOption((option) =>
+      option.setName('include_pinned').setDescription('Delete pinned messages too (default: keep them)').setRequired(false),
+    );
+
   return [
     link.toJSON(),
     unlink.toJSON(),
@@ -127,5 +142,6 @@ export function slashCommandBody(): RESTPostAPIChatInputApplicationCommandsJSONB
     ask.toJSON(),
     askReset.toJSON(),
     unlinkUser.toJSON(),
+    purge.toJSON(),
   ];
 }

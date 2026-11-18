@@ -24,6 +24,7 @@ import type { AppContext } from './context';
 import { clip } from './http';
 import { JellyfinClient, jellyfinConfigured } from './jellyfin';
 import { requestButtons } from './present';
+import { confirmPurge, purgeCommand } from './purge';
 import { posterUrl, type SearchHit } from './seerr';
 import { TautulliClient, tautulliConfigured } from './tautulli';
 
@@ -51,6 +52,9 @@ export async function handleAdminCommand(interaction: ChatInputCommandInteractio
       return true;
     case 'unlink':
       await unlinkMember(interaction, ctx);
+      return true;
+    case 'purge':
+      await purgeCommand(interaction, ctx);
       return true;
     default:
       return false;
@@ -80,6 +84,10 @@ export async function handleAdminComponent(interaction: Interaction, ctx: AppCon
   }
   if (interaction.isModalSubmit() && interaction.customId === 'announce:modal') {
     await postAnnouncement(interaction, ctx);
+    return true;
+  }
+  if (interaction.isButton() && interaction.customId.startsWith('purge:yes:')) {
+    await confirmPurge(interaction, ctx);
     return true;
   }
   if (interaction.isButton() && interaction.customId.startsWith('restart:yes:')) {

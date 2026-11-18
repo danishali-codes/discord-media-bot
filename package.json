@@ -10,7 +10,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "register": "node dist/register.js",
-    "test": "node --import tsx --test test/match.test.ts test/seerr.test.ts test/logic.test.ts test/bots.test.ts test/notifications.test.ts",
+    "test": "node --import tsx --test test/match.test.ts test/seerr.test.ts test/logic.test.ts test/bots.test.ts test/notifications.test.ts test/purge.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
